@@ -1,0 +1,6 @@
+{
+  "name": "gCAD Code Editor",
+  "description": "Professional and powerful offline-ready code editor with live preview, AI code assistant, error detection, project management, and multi-format compile outputs.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
