@@ -17,9 +17,22 @@ import {
   FileCode,
   Check,
   AlertTriangle,
+  AlignLeft,
+  Sparkles,
+  Play,
+  Bug,
 } from 'lucide-react';
 import { CodeFile, LintError, Project, SupportedLanguage } from '../types/editor';
 import { highlightCode } from '../utils/syntaxHighlighter';
+import { formatCode } from '../utils/codeFormatter';
+
+export const AVAILABLE_FONTS = [
+  { id: 'Fira Code', label: 'Fira Code', family: "'Fira Code', monospace" },
+  { id: 'JetBrains Mono', label: 'JetBrains Mono', family: "'JetBrains Mono', monospace" },
+  { id: 'Source Code Pro', label: 'Source Code Pro', family: "'Source Code Pro', monospace" },
+  { id: 'Courier New', label: 'Courier New', family: "'Courier New', Courier, monospace" },
+  { id: 'Inter', label: 'Inter (Sans)', family: "'Inter', sans-serif" },
+];
 
 interface CodeEditorProps {
   project: Project;
@@ -39,6 +52,10 @@ interface CodeEditorProps {
   onDownloadProject: () => void;
   fontSize: number;
   onChangeFontSize: (newSize: number) => void;
+  fontFamily: string;
+  onChangeFontFamily: (font: string) => void;
+  onRunProject?: () => void;
+  onDebugScan?: () => void;
 }
 
 export const CodeEditor: React.FC<CodeEditorProps> = ({
@@ -59,18 +76,33 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
   onDownloadProject,
   fontSize,
   onChangeFontSize,
+  fontFamily,
+  onChangeFontFamily,
+  onRunProject,
+  onDebugScan,
 }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isFormatBoxOpen, setIsFormatBoxOpen] = useState(false);
+  const [isFontDropdownOpen, setIsFontDropdownOpen] = useState(false);
   const [isEditingEnabled, setIsEditingEnabled] = useState(true);
   const [isNewFileModalOpen, setIsNewFileModalOpen] = useState(false);
   const [newFileName, setNewFileName] = useState('');
+  const [editorToast, setEditorToast] = useState<string | null>(null);
 
   const menuRef = useRef<HTMLDivElement>(null);
+  const formatBoxRef = useRef<HTMLDivElement>(null);
   const tabsScrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const preRef = useRef<HTMLPreElement>(null);
   const gutterRef = useRef<HTMLDivElement>(null);
+
+  // Show temporary toast inside editor
+  const showToast = (msg: string) => {
+    setEditorToast(msg);
+    setTimeout(() => {
+      setEditorToast((curr) => (curr === msg ? null : curr));
+    }, 2400);
+  };
 
   // Synchronize scrolling between textarea, underlying syntax highlighted pre, and line numbers gutter
   const handleEditorScroll = () => {
@@ -92,20 +124,228 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
     return highlightCode(activeFile?.content || '', activeFile?.language || 'javascript');
   }, [activeFile?.content, activeFile?.language]);
 
-  // Tab key indent handler
+  // Selected font styling
+  const fontCssValue = useMemo(() => {
+    const found = AVAILABLE_FONTS.find((f) => f.id === fontFamily);
+    return found ? found.family : "'Fira Code', monospace";
+  }, [fontFamily]);
+
+  // Manual Trigger Code Formatting
+  const handleFormatCurrentCode = () => {
+    if (!activeFile) return;
+    const formatted = formatCode(activeFile.content, activeFile.language);
+    onUpdateFileContent(activeFile.id, formatted);
+    showToast('Code formatted in order (Alt+Shift+F)');
+  };
+
+  // Void elements that should NOT have closing tags in HTML
+  const VOID_HTML_TAGS = new Set([
+    'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input',
+    'link', 'meta', 'param', 'source', 'track', 'wbr', '!doctype',
+  ]);
+
+  // Comprehensive keyboard shortcut & smart editing handler
   const handleEditorKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Tab') {
+    const textarea = textareaRef.current;
+    if (!textarea || !activeFile || !isEditingEnabled) return;
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const val = textarea.value;
+
+    // 1. Shortcut: Ctrl+S / Cmd+S => Save Project
+    if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
       e.preventDefault();
-      const textarea = textareaRef.current;
-      if (!textarea || !activeFile) return;
-      const start = textarea.selectionStart;
-      const end = textarea.selectionEnd;
-      const val = textarea.value;
+      onSaveProject();
+      showToast('Project saved (Ctrl+S)');
+      return;
+    }
+
+    // 2. Shortcut: Ctrl+Enter / Cmd+Enter => Run Project
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      e.preventDefault();
+      if (onRunProject) {
+        onRunProject();
+        showToast('Running project in preview (Ctrl+Enter)');
+      }
+      return;
+    }
+
+    // 3. Shortcut: Alt+Shift+F => Format Code in Order
+    if (e.altKey && e.shiftKey && (e.key === 'F' || e.key === 'f')) {
+      e.preventDefault();
+      handleFormatCurrentCode();
+      return;
+    }
+
+    // 4. Shortcut: "!" + Tab => Generates full HTML introductory template
+    if (e.key === 'Tab' && !e.shiftKey) {
+      // Check if character before cursor is '!'
+      const charBefore = val.slice(Math.max(0, start - 1), start);
+      const isHtmlDoc = activeFile.language === 'html' || activeFile.name.endsWith('.html');
+
+      if (charBefore === '!' && isHtmlDoc) {
+        e.preventDefault();
+        const htmlBoilerplate = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${project.name || 'Document'}</title>
+</head>
+<body>
+  
+</body>
+</html>`;
+
+        const updated = val.substring(0, start - 1) + htmlBoilerplate + val.substring(end);
+        onUpdateFileContent(activeFile.id, updated);
+
+        // Position cursor inside <body>
+        setTimeout(() => {
+          const bodyIndex = updated.indexOf('<body>\n  ') + '<body>\n  '.length;
+          textarea.selectionStart = textarea.selectionEnd = bodyIndex >= 0 ? bodyIndex : start;
+        }, 10);
+        showToast('HTML boilerplate generated (! + Tab)');
+        return;
+      }
+
+      // Normal Tab key indentation (2 spaces)
+      e.preventDefault();
       const updated = val.substring(0, start) + '  ' + val.substring(end);
       onUpdateFileContent(activeFile.id, updated);
       setTimeout(() => {
         textarea.selectionStart = textarea.selectionEnd = start + 2;
       }, 0);
+      return;
+    }
+
+    // 5. Auto-closing HTML tags: typing '>'
+    if (e.key === '>') {
+      // Look back for preceding opening tag: e.g. <html or <div class="box"
+      const beforeCursor = val.slice(0, start);
+      const openTagMatch = beforeCursor.match(/<([a-zA-Z0-9\-]+)(?:\s+[^<>]*)?$/);
+
+      if (openTagMatch) {
+        const tagName = openTagMatch[1].toLowerCase();
+        const fullMatched = openTagMatch[0];
+
+        // Check it's not a closing tag like </div and not self-closing and not void tag
+        if (!fullMatched.startsWith('</') && !fullMatched.endsWith('/') && !VOID_HTML_TAGS.has(tagName)) {
+          e.preventDefault();
+          const closingTag = `</${tagName}>`;
+          const updated = val.substring(0, start) + '>' + closingTag + val.substring(end);
+          onUpdateFileContent(activeFile.id, updated);
+
+          // Place cursor right after '>' (between > and </tagName>)
+          setTimeout(() => {
+            textarea.selectionStart = textarea.selectionEnd = start + 1;
+          }, 0);
+          return;
+        }
+      }
+    }
+
+    // 6. Auto-closing pairs: (), {}, [], "", '', ``
+    const PAIRS: Record<string, string> = {
+      '(': ')',
+      '[': ']',
+      '{': '}',
+      '"': '"',
+      "'": "'",
+      '`': '`',
+    };
+
+    if (PAIRS[e.key]) {
+      const openChar = e.key;
+      const closeChar = PAIRS[openChar];
+
+      // If user has text selected, surround the selected text!
+      if (start !== end) {
+        e.preventDefault();
+        const selected = val.substring(start, end);
+        const updated = val.substring(0, start) + openChar + selected + closeChar + val.substring(end);
+        onUpdateFileContent(activeFile.id, updated);
+        setTimeout(() => {
+          textarea.selectionStart = start + 1;
+          textarea.selectionEnd = end + 1;
+        }, 0);
+        return;
+      }
+
+      // If typing quote/bracket and the very next character is already that closing character, skip over it
+      const nextChar = val.charAt(start);
+      if ((openChar === '"' || openChar === "'" || openChar === '`') && nextChar === openChar) {
+        e.preventDefault();
+        textarea.selectionStart = textarea.selectionEnd = start + 1;
+        return;
+      }
+
+      // Otherwise insert pair and position caret inside
+      e.preventDefault();
+      const updated = val.substring(0, start) + openChar + closeChar + val.substring(end);
+      onUpdateFileContent(activeFile.id, updated);
+      setTimeout(() => {
+        textarea.selectionStart = textarea.selectionEnd = start + 1;
+      }, 0);
+      return;
+    }
+
+    // 7. Auto-closing skip over: ), ], }
+    if (e.key === ')' || e.key === ']' || e.key === '}') {
+      const nextChar = val.charAt(start);
+      if (nextChar === e.key && start === end) {
+        e.preventDefault();
+        textarea.selectionStart = textarea.selectionEnd = start + 1;
+        return;
+      }
+    }
+
+    // 8. Backspace handler: delete matching empty pair e.g. () -> delete both
+    if (e.key === 'Backspace' && start === end && start > 0) {
+      const charBefore = val.charAt(start - 1);
+      const charAfter = val.charAt(start);
+      if (
+        (charBefore === '(' && charAfter === ')') ||
+        (charBefore === '[' && charAfter === ']') ||
+        (charBefore === '{' && charAfter === '}') ||
+        (charBefore === '"' && charAfter === '"') ||
+        (charBefore === "'" && charAfter === "'") ||
+        (charBefore === '`' && charAfter === '`')
+      ) {
+        e.preventDefault();
+        const updated = val.substring(0, start - 1) + val.substring(start + 1);
+        onUpdateFileContent(activeFile.id, updated);
+        setTimeout(() => {
+          textarea.selectionStart = textarea.selectionEnd = start - 1;
+        }, 0);
+        return;
+      }
+    }
+
+    // 9. Enter key auto-indent between braces { } or tags > <
+    if (e.key === 'Enter' && start === end && start > 0) {
+      const charBefore = val.charAt(start - 1);
+      const charAfter = val.charAt(start);
+
+      if (charBefore === '{' && charAfter === '}') {
+        e.preventDefault();
+        // Determine current line indentation
+        const linesBefore = val.slice(0, start).split('\n');
+        const currentLine = linesBefore[linesBefore.length - 1];
+        const indentMatch = currentLine.match(/^\s*/);
+        const currentIndent = indentMatch ? indentMatch[0] : '';
+        const innerIndent = currentIndent + '  ';
+
+        const insertion = `\n${innerIndent}\n${currentIndent}`;
+        const updated = val.substring(0, start) + insertion + val.substring(start);
+        onUpdateFileContent(activeFile.id, updated);
+
+        setTimeout(() => {
+          textarea.selectionStart = textarea.selectionEnd = start + 1 + innerIndent.length;
+        }, 0);
+        return;
+      }
     }
   };
 
@@ -114,7 +354,10 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
     function handleClickOutside(event: MouseEvent) {
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
         setIsMenuOpen(false);
+      }
+      if (formatBoxRef.current && !formatBoxRef.current.contains(event.target as Node)) {
         setIsFormatBoxOpen(false);
+        setIsFontDropdownOpen(false);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
@@ -179,13 +422,13 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
   return (
     <div className="flex flex-col h-full bg-[#384556] text-white select-none relative overflow-hidden">
       {/* Top Toolbar matching screenshot exactly */}
-      <div className="h-12 bg-[#384556] border-b border-[#475569] px-2.5 flex items-center justify-between gap-2 z-10">
+      <div className="h-12 bg-[#384556] border-b border-[#475569] px-2.5 flex items-center justify-between gap-2 z-10 shrink-0">
         <div className="flex items-center gap-2 relative">
           {/* Hamburger button (3 lines) */}
           <div className="relative" ref={menuRef}>
             <button
               onClick={() => setIsMenuOpen(!isMenuOpen)}
-              title="Project Menu"
+              title="Project Workspace Menu"
               className="w-8 h-8 rounded-lg bg-[#334155]/80 hover:bg-slate-700 border border-slate-500/60 flex items-center justify-center text-slate-200 transition active:scale-95"
             >
               <Menu className="w-4 h-4" />
@@ -194,9 +437,52 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
             {/* Hamburger Dropdown Menu */}
             {isMenuOpen && (
               <div className="absolute top-10 left-0 w-64 bg-[#283341] border border-[#4a5a6e] rounded-xl shadow-2xl py-2 z-50 text-xs animate-in fade-in slide-in-from-top-1">
-                <div className="px-3 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-700/60 mb-1">
-                  Project Workspace
+                <div className="px-3 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-700/60 mb-1 flex items-center justify-between">
+                  <span>Project Workspace</span>
                 </div>
+
+                {/* Run project button */}
+                <button
+                  onClick={() => {
+                    setIsMenuOpen(false);
+                    if (onRunProject) onRunProject();
+                  }}
+                  className="w-full px-3 py-2 text-left hover:bg-slate-700 flex items-center justify-between text-slate-200 hover:text-white transition group"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <Play className="w-4 h-4 text-emerald-400 fill-emerald-400 group-hover:scale-110 transition-transform shrink-0" />
+                    <div>
+                      <p className="font-semibold text-emerald-300">Run project</p>
+                      <p className="text-[10px] text-slate-400">Execute in preview canvas</p>
+                    </div>
+                  </div>
+                  <span className="text-[9px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded font-mono">
+                    Ctrl+Enter
+                  </span>
+                </button>
+
+                {/* Debug project button */}
+                <button
+                  onClick={() => {
+                    setIsMenuOpen(false);
+                    if (onDebugScan) onDebugScan();
+                  }}
+                  className="w-full px-3 py-2 text-left hover:bg-slate-700 flex items-center justify-between text-slate-200 hover:text-white transition group"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <Bug className="w-4 h-4 text-rose-400 group-hover:scale-110 transition-transform shrink-0" />
+                    <div>
+                      <p className="font-semibold text-rose-300">Debug project</p>
+                      <p className="text-[10px] text-slate-400">Deep scan code diagnostics</p>
+                    </div>
+                  </div>
+                  <span className="text-[9px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded font-mono">
+                    Scan
+                  </span>
+                </button>
+
+                <div className="my-1 border-t border-slate-700/60" />
+
                 <button
                   onClick={() => {
                     setIsMenuOpen(false);
@@ -250,7 +536,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
                 >
                   <Save className="w-4 h-4 text-sky-400" />
                   <div className="flex-1 flex justify-between items-center">
-                    <span className="font-semibold">Save</span>
+                    <span className="font-semibold">Save (Ctrl+S)</span>
                     <span className="text-[9px] bg-slate-800 px-1.5 py-0.5 rounded text-slate-400">
                       Auto: 5m
                     </span>
@@ -275,7 +561,9 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
 
                 {/* Format Editor entry inside menu */}
                 <button
-                  onClick={() => setIsFormatBoxOpen(!isFormatBoxOpen)}
+                  onClick={() => {
+                    setIsFormatBoxOpen(!isFormatBoxOpen);
+                  }}
                   className="w-full px-3 py-2 text-left hover:bg-slate-700 flex items-center justify-between text-slate-200 hover:text-white transition"
                 >
                   <div className="flex items-center gap-2.5">
@@ -284,29 +572,6 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
                   </div>
                   <span className="text-[10px] text-slate-400 font-mono">{fontSize}px</span>
                 </button>
-
-                {/* Format Editor 3-column control */}
-                {isFormatBoxOpen && (
-                  <div className="mx-3 my-2 p-2 bg-[#1e2733] border border-slate-700 rounded-lg">
-                    <div className="grid grid-cols-3 gap-1 items-center text-center">
-                      <button
-                        onClick={() => onChangeFontSize(Math.max(fontSize - 1, 10))}
-                        className="py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white font-bold text-sm active:scale-95"
-                      >
-                        -
-                      </button>
-                      <span className="text-xs font-mono font-semibold text-cyan-300">
-                        {fontSize}px
-                      </span>
-                      <button
-                        onClick={() => onChangeFontSize(Math.min(fontSize + 1, 32))}
-                        className="py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white font-bold text-sm active:scale-95"
-                      >
-                        +
-                      </button>
-                    </div>
-                  </div>
-                )}
               </div>
             )}
           </div>
@@ -317,8 +582,95 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
             title="Click to view Project File Tree"
             className="h-8 px-3.5 bg-[#334155]/60 hover:bg-[#334155] border border-slate-500/70 rounded-full flex items-center gap-2 text-xs font-medium text-slate-100 transition shadow-inner"
           >
-            <span className="truncate max-w-[140px] sm:max-w-[200px]">{project.name}</span>
+            <span className="truncate max-w-[130px] sm:max-w-[190px]">{project.name}</span>
           </button>
+
+          {/* Format Editor & Font Type Dropdown Button */}
+          <div className="relative" ref={formatBoxRef}>
+            <button
+              onClick={() => setIsFormatBoxOpen(!isFormatBoxOpen)}
+              title="Editor Formatting & Font Settings"
+              className={`h-8 px-2.5 rounded-lg border text-xs font-medium flex items-center gap-1.5 transition ${
+                isFormatBoxOpen
+                  ? 'bg-rose-950/60 text-rose-300 border-rose-500/60'
+                  : 'bg-[#334155]/80 hover:bg-slate-700 text-slate-200 border-slate-500/60'
+              }`}
+            >
+              <Type className="w-3.5 h-3.5 text-rose-400" />
+              <span className="hidden md:inline font-mono">{fontSize}px</span>
+            </button>
+
+            {/* Format Editor 3-Column Control & Font Type Selector */}
+            {isFormatBoxOpen && (
+              <div className="absolute top-10 left-0 w-64 bg-[#1f2834] border border-[#4a5a6e] rounded-xl shadow-2xl p-3 z-50 text-xs animate-in fade-in slide-in-from-top-1 space-y-3">
+                {/* 3-Column Font Size Control: [-] [14px] [+] */}
+                <div>
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 flex justify-between items-center">
+                    <span>Font Size</span>
+                    <span className="text-cyan-400 font-mono font-semibold">{fontSize}px</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-1 items-center text-center">
+                    <button
+                      onClick={() => onChangeFontSize(Math.max(fontSize - 1, 10))}
+                      title="Decrease font size"
+                      className="py-1 rounded bg-[#2a3646] hover:bg-slate-700 text-slate-200 hover:text-white font-bold text-base active:scale-95 transition border border-slate-600"
+                    >
+                      -
+                    </button>
+                    <div className="py-1 bg-[#151c24] text-xs font-mono font-bold text-cyan-300 rounded border border-slate-700 flex items-center justify-center">
+                      {fontSize}px
+                    </div>
+                    <button
+                      onClick={() => onChangeFontSize(Math.min(fontSize + 2, 32))}
+                      title="Increase font size"
+                      className="py-1 rounded bg-[#2a3646] hover:bg-slate-700 text-slate-200 hover:text-white font-bold text-base active:scale-95 transition border border-slate-600"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+
+                {/* Font Family / Type Selector */}
+                <div>
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 flex justify-between items-center">
+                    <span>Font Family</span>
+                    <span className="text-[10px] text-slate-400">{fontFamily}</span>
+                  </div>
+                  <div className="space-y-1">
+                    {AVAILABLE_FONTS.map((font) => (
+                      <button
+                        key={font.id}
+                        onClick={() => {
+                          onChangeFontFamily(font.id);
+                          showToast(`Font set to ${font.label}`);
+                        }}
+                        className={`w-full px-2.5 py-1.5 rounded-lg text-left flex items-center justify-between text-xs transition ${
+                          fontFamily === font.id
+                            ? 'bg-cyan-950/70 text-cyan-300 font-semibold border border-cyan-600/60'
+                            : 'hover:bg-slate-700/60 text-slate-300 border border-transparent'
+                        }`}
+                        style={{ fontFamily: font.family }}
+                      >
+                        <span>{font.label}</span>
+                        {fontFamily === font.id && <Check className="w-3.5 h-3.5 text-cyan-400" />}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Code Format Button: Alt + Shift + F */}
+                <div className="pt-2 border-t border-slate-700/60">
+                  <button
+                    onClick={handleFormatCurrentCode}
+                    className="w-full py-1.5 px-2 bg-gradient-to-r from-cyan-900/60 to-blue-900/60 hover:from-cyan-800/80 hover:to-blue-800/80 text-cyan-200 border border-cyan-600/50 rounded-lg font-medium flex items-center justify-center gap-1.5 text-xs transition active:scale-95 shadow-sm"
+                  >
+                    <AlignLeft className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>Format Code (Alt+Shift+F)</span>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Right side of editor toolbar */}
@@ -362,7 +714,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
       </div>
 
       {/* Code File Tabs Bar matching screenshot */}
-      <div className="h-9 bg-[#2e3948] border-b border-[#475569] flex items-center px-1 text-xs">
+      <div className="h-9 bg-[#2e3948] border-b border-[#475569] flex items-center px-1 text-xs shrink-0">
         {/* Left scroll navigation arrow */}
         <button
           onClick={() => scrollTabs('left')}
@@ -441,12 +793,16 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
       </div>
 
       {/* Editor Body: Line numbers and Syntax Highlighted Code Canvas */}
-      <div className="flex-1 flex overflow-hidden bg-[#2d3847] font-mono relative">
+      <div className="flex-1 flex overflow-hidden bg-[#2d3847] relative">
         {/* Line Numbers Gutter */}
         <div
           ref={gutterRef}
           className="w-12 bg-[#252f3d] border-r border-[#3e4c5e] text-slate-500 text-right pr-2 select-none overflow-hidden py-3 shrink-0"
-          style={{ fontSize: `${fontSize}px`, lineHeight: '1.5' }}
+          style={{
+            fontSize: `${fontSize}px`,
+            lineHeight: '1.5',
+            fontFamily: fontCssValue,
+          }}
         >
           {Array.from({ length: lineCount }).map((_, idx) => {
             const lineNum = idx + 1;
@@ -471,12 +827,13 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
           <pre
             ref={preRef}
             aria-hidden="true"
-            className="absolute inset-0 p-3 m-0 overflow-hidden font-mono pointer-events-none select-none text-slate-100"
+            className="absolute inset-0 p-3 m-0 overflow-hidden pointer-events-none select-none text-slate-100"
             style={{
               fontSize: `${fontSize}px`,
               lineHeight: '1.5',
               tabSize: 2,
               whiteSpace: 'pre',
+              fontFamily: fontCssValue,
             }}
             dangerouslySetInnerHTML={{
               __html: (highlightedHtml || '') + '\n',
@@ -497,11 +854,11 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
             }}
             placeholder={
               activeFile
-                ? 'Type or paste code here directly...'
+                ? "Type or paste code here directly... (Tip: '! + Tab' for HTML template, 'Alt+Shift+F' to format)"
                 : 'No file open. Click + to create a file or open from project menu.'
             }
             spellCheck={false}
-            className={`absolute inset-0 p-3 m-0 w-full h-full bg-transparent font-mono resize-none focus:outline-none overflow-auto leading-[1.5] ${
+            className={`absolute inset-0 p-3 m-0 w-full h-full bg-transparent resize-none focus:outline-none overflow-auto leading-[1.5] ${
               !isEditingEnabled ? 'cursor-not-allowed' : ''
             }`}
             style={{
@@ -509,26 +866,37 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
               lineHeight: '1.5',
               tabSize: 2,
               whiteSpace: 'pre',
+              fontFamily: fontCssValue,
               color: activeFile && activeFile.content ? 'transparent' : '#94a3b8',
               caretColor: '#38bdf8',
             }}
           />
 
+          {/* Lock Overlay Badge */}
           {!isEditingEnabled && (
             <div className="absolute top-3 right-3 bg-slate-900/80 backdrop-blur px-2.5 py-1 rounded text-[11px] text-amber-300 border border-amber-500/30 flex items-center gap-1 pointer-events-none z-20">
               <Lock className="w-3 h-3" />
               <span>Editing Locked</span>
             </div>
           )}
+
+          {/* In-Editor Toast for Shortcut feedback */}
+          {editorToast && (
+            <div className="absolute bottom-4 right-4 bg-[#1a232f]/95 border border-cyan-500/50 text-cyan-300 text-xs px-3 py-1.5 rounded-lg shadow-xl flex items-center gap-2 pointer-events-none z-30 animate-in fade-in slide-in-from-bottom-2">
+              <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+              <span>{editorToast}</span>
+            </div>
+          )}
         </div>
       </div>
 
       {/* Editor Footer Status Bar */}
-      <div className="h-6 bg-[#252f3d] border-t border-[#3e4c5e] px-3 flex items-center justify-between text-[10px] text-slate-400">
+      <div className="h-6 bg-[#252f3d] border-t border-[#3e4c5e] px-3 flex items-center justify-between text-[10px] text-slate-400 shrink-0">
         <div className="flex items-center gap-3">
-          <span>{activeFile?.language.toUpperCase() || 'PLAINTEXT'}</span>
+          <span className="font-semibold">{activeFile?.language.toUpperCase() || 'PLAINTEXT'}</span>
           <span>UTF-8</span>
           <span>Lines: {lineCount}</span>
+          <span className="hidden sm:inline text-slate-500">Font: {fontFamily}</span>
         </div>
         <div className="flex items-center gap-2">
           {activeFileErrorLines.size > 0 ? (
@@ -542,7 +910,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
             </span>
           )}
           <span className="text-slate-500">|</span>
-          <span>Auto-Save: 5m</span>
+          <span className="hidden xs:inline">Auto-Save: 5m</span>
         </div>
       </div>
 

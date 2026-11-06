@@ -1,7 +1,6 @@
 import React from 'react';
 import {
   Code2,
-  Bug,
   HelpCircle,
   Settings,
   Minus,
@@ -16,7 +15,6 @@ interface HeaderProps {
   isConsoleOpen: boolean;
   onToggleConsole: () => void;
   errorCount: number;
-  onDebugClick: () => void;
   onOpenGuide: () => void;
   onOpenConfig: () => void;
   isWindowMaximized: boolean;
@@ -29,7 +27,6 @@ export const Header: React.FC<HeaderProps> = ({
   isConsoleOpen,
   onToggleConsole,
   errorCount,
-  onDebugClick,
   onOpenGuide,
   onOpenConfig,
   isWindowMaximized,
@@ -73,15 +70,6 @@ export const Header: React.FC<HeaderProps> = ({
           <span>Configurations</span>
         </button>
 
-        {/* Debug button */}
-        <button
-          onClick={onDebugClick}
-          title="Run instant project error diagnostics"
-          className="flex items-center gap-1 px-2 sm:px-3 py-1.5 text-xs font-medium text-slate-200 bg-slate-700/50 hover:bg-slate-700 border border-slate-500/60 rounded-full transition shadow-sm active:scale-95 shrink-0"
-        >
-          <Bug className="w-3.5 h-3.5 text-rose-400" />
-          <span className="hidden sm:inline">Debug</span>
-        </button>
 
         {/* Open Chat / Hide Chat */}
         <button

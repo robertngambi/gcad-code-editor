@@ -57,8 +57,16 @@ export default function App() {
   // Mobile layout active tab: 'editor' | 'preview' | 'chat' | 'console'
   const [mobileActiveTab, setMobileActiveTab] = useState<'editor' | 'preview' | 'chat' | 'console'>('editor');
 
-  // Font size state
+  // Font size & family state
   const [fontSize, setFontSize] = useState<number>(14);
+  const [fontFamily, setFontFamily] = useState<string>(() => {
+    return localStorage.getItem('gcad_font_family') || 'Fira Code';
+  });
+
+  // Persist font preference
+  useEffect(() => {
+    localStorage.setItem('gcad_font_family', fontFamily);
+  }, [fontFamily]);
 
   // Resizable split widths & heights
   const [chatWidth, setChatWidth] = useState<number>(320);
@@ -274,7 +282,7 @@ export default function App() {
     ]);
   }, []);
 
-  // Debugger action: deep scan & open console
+  // Debugger action: deep scan & open console (triggered from Debug button inside console box)
   const handleDebugClick = () => {
     const currentErrors = scanCodeForErrors(project.files);
     setErrors(currentErrors);
@@ -291,6 +299,37 @@ export default function App() {
       ...prev,
     ]);
   };
+
+  // Run Project in Live Preview (triggered from Run button in header or Ctrl+Enter)
+  const handleRunProject = useCallback(() => {
+    const currentErrors = scanCodeForErrors(project.files);
+    setErrors(currentErrors);
+
+    setLogs((prev) => [
+      {
+        id: `run-${Date.now()}`,
+        timestamp: new Date().toLocaleTimeString(),
+        type: 'info',
+        message: `Executing project "${project.name}" in live preview canvas...`,
+      },
+      ...prev,
+    ]);
+
+    if (currentErrors.length > 0) {
+      setLogs((prev) => [
+        {
+          id: `run-err-${Date.now()}`,
+          timestamp: new Date().toLocaleTimeString(),
+          type: 'warn',
+          message: `Notice: Project executed with ${currentErrors.length} detected syntax error(s). Check 'Code errors' view.`,
+        },
+        ...prev,
+      ]);
+    }
+
+    setAutoSaveNotification('Project executed in live preview.');
+    setTimeout(() => setAutoSaveNotification(null), 2500);
+  }, [project.files, project.name]);
 
   // "Fix with AI" click from debug console
   const handleFixWithAI = (error: LintError) => {
@@ -384,7 +423,6 @@ export default function App() {
             if (next) setMobileActiveTab('console');
           }}
           errorCount={errors.length}
-          onDebugClick={handleDebugClick}
           onOpenGuide={() => setIsGuideModalOpen(true)}
           onOpenConfig={() => setIsConfigModalOpen(true)}
           isWindowMaximized={isWindowMaximized}
@@ -452,6 +490,10 @@ export default function App() {
               onDownloadProject={() => downloadProjectZip(project)}
               fontSize={fontSize}
               onChangeFontSize={setFontSize}
+              fontFamily={fontFamily}
+              onChangeFontFamily={setFontFamily}
+              onRunProject={handleRunProject}
+              onDebugScan={handleDebugClick}
             />
           </div>
 
@@ -552,6 +594,10 @@ export default function App() {
                 onDownloadProject={() => downloadProjectZip(project)}
                 fontSize={fontSize}
                 onChangeFontSize={setFontSize}
+                fontFamily={fontFamily}
+                onChangeFontFamily={setFontFamily}
+                onRunProject={handleRunProject}
+                onDebugScan={handleDebugClick}
               />
             </div>
 

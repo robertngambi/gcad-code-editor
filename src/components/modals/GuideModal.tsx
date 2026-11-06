@@ -72,23 +72,73 @@ export const GuideModal: React.FC<GuideModalProps> = ({ isOpen, onClose }) => {
             </ul>
           </div>
 
+          {/* Section: Keyboard Shortcuts & Smart Coding */}
+          <div className="bg-[#1b232e] p-4 rounded-xl border border-slate-700 space-y-2">
+            <div className="flex items-center gap-2 font-bold text-sky-300 text-sm">
+              <Keyboard className="w-4 h-4 text-sky-400" />
+              <span>Smart Coding & Keyboard Shortcuts</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-slate-300 pt-1">
+              <div className="bg-[#161d26] p-2 rounded-lg border border-slate-800">
+                <span className="font-mono font-bold text-cyan-300 bg-slate-800 px-1.5 py-0.5 rounded text-[11px] mr-1.5">
+                  ! + Tab
+                </span>
+                <span className="text-slate-400">Generates full HTML5 boilerplate code instantly.</span>
+              </div>
+              <div className="bg-[#161d26] p-2 rounded-lg border border-slate-800">
+                <span className="font-mono font-bold text-cyan-300 bg-slate-800 px-1.5 py-0.5 rounded text-[11px] mr-1.5">
+                  Alt + Shift + F
+                </span>
+                <span className="text-slate-400">Formats entire code in order with clean 2-space indentation.</span>
+              </div>
+              <div className="bg-[#161d26] p-2 rounded-lg border border-slate-800">
+                <span className="font-mono font-bold text-cyan-300 bg-slate-800 px-1.5 py-0.5 rounded text-[11px] mr-1.5">
+                  &lt;tag&gt;
+                </span>
+                <span className="text-slate-400">Auto-closes tags (e.g. typing &gt; after &lt;html inserts &lt;/html&gt;).</span>
+              </div>
+              <div className="bg-[#161d26] p-2 rounded-lg border border-slate-800">
+                <span className="font-mono font-bold text-cyan-300 bg-slate-800 px-1.5 py-0.5 rounded text-[11px] mr-1.5">
+                  ( ) { } [ ] " ' `
+                </span>
+                <span className="text-slate-400">Auto-closes pairs and surrounds selected code blocks.</span>
+              </div>
+              <div className="bg-[#161d26] p-2 rounded-lg border border-slate-800">
+                <span className="font-mono font-bold text-cyan-300 bg-slate-800 px-1.5 py-0.5 rounded text-[11px] mr-1.5">
+                  Ctrl + S
+                </span>
+                <span className="text-slate-400">Instant manual project save (also auto-saves every 5 min).</span>
+              </div>
+              <div className="bg-[#161d26] p-2 rounded-lg border border-slate-800">
+                <span className="font-mono font-bold text-cyan-300 bg-slate-800 px-1.5 py-0.5 rounded text-[11px] mr-1.5">
+                  Ctrl + Enter
+                </span>
+                <span className="text-slate-400">Executes & refreshes previewer (same as 'Run project' in editor menu).</span>
+              </div>
+            </div>
+          </div>
+
           {/* Section: Code Editor & Formatting */}
           <div className="bg-[#1b232e] p-4 rounded-xl border border-slate-700 space-y-2">
             <div className="flex items-center gap-2 font-bold text-amber-300 text-sm">
               <FolderTree className="w-4 h-4 text-amber-400" />
-              <span>Workspace & Format Editor</span>
+              <span>Workspace & Editor Menu</span>
             </div>
             <p className="text-slate-300">
               The hamburger menu (<code>☰</code>) on the editor toolbar provides:
             </p>
             <ul className="list-disc list-inside space-y-1 text-slate-400 ml-1">
               <li>
-                <strong>Create project / Open project:</strong> Manage folders on your PC and import
-                projects.
+                <strong>Run project:</strong> Execute code in the live preview canvas (also press <code>Ctrl+Enter</code>).
               </li>
               <li>
-                <strong>Format Editor:</strong> Adjust code font size with the 3-column control:{' '}
-                <code>[-]</code> <code>[14px]</code> <code>[+]</code>.
+                <strong>Debug project:</strong> Run deep diagnostic error scan and open console updates.
+              </li>
+              <li>
+                <strong>Create project / Open project:</strong> Manage folders on your PC and import projects.
+              </li>
+              <li>
+                <strong>Format Editor:</strong> Adjust code font size with <code>[-]</code> <code>[14px]</code> <code>[+]</code> and select your preferred font family (Fira Code, JetBrains Mono, Source Code Pro, Courier New, Inter).
               </li>
               <li>
                 <strong>Edit button:</strong> Toggle manual typing enabled or locked.
